@@ -1,5 +1,4 @@
-// Copy this file to secrets.h and fill in your network.
-// secrets.h is listed in .gitignore and never gets committed.
+// Copy to secrets.h in the same folder; do not commit real credentials.
 #pragma once
-#define WIFI_SSID "your-wifi-name"
-#define WIFI_PASS "your-wifi-password"
+#define WIFI_SSID "YOUR_WIFI_SSID"
+#define WIFI_PASS "YOUR_WIFI_PASSWORD"

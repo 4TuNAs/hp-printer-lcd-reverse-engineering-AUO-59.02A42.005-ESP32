@@ -1,49 +1,83 @@
-# Board Reverse Engineering
+# Reverse-engineering the HP Photosmart TouchSmart LCD board
 
-This file contains the condensed hardware-teardown notes for the HP Photosmart TouchSmart LCD panel used in this repository.
+This document is the hardware notebook behind the [main project](../README.md). It records which connections were **confirmed by continuity testing** and which component identifications remain **tentative**.
 
-![Hardware overview](img/overview.jpg)
+![Panel board, LCD and wired ESP32](img/overview.jpg)
 
-## Recovered hardware
+## Original assembly
 
-- AUO `59.02A42.005` / A024CN02-family LCD
-- HP `CN245-60001` TouchSmart panel PCB
-- Cypress `CY8C20546-24PVXI`
-- 40-pin LCD FPC
-- raw 8-bit parallel video interface
+- HP Photosmart TouchSmart panel PCB marked **`CN245-60001`**.
+- AUO LCD module marked **`59.02A42.005`**, related to the **A024CN02 VJ** family.
+- 40-pin LCD FPC connector.
+- Cypress **`CY8C20546-24PVXI`** PSoC near the touch controls / panel LEDs.
+- Printer-mainboard connector (removed for tracing).
 
-## Main discovery
+The longer label string `270S06ZS4A06X101620102` is omitted because the photograph does not establish it reliably and it is not required for reusing the interface.
 
-The Cypress device is **not** in the framebuffer/video path.
+## Finding the video interface
 
-Continuity testing showed that `D0-D7`, `DCLK`, `HSYNC` and `VSYNC` run directly between the former printer-mainboard connector and the LCD FPC.
+The printer-mainboard connector was desoldered to expose copper pads. Each pad was checked for continuity to the 40-pin display FPC.
 
-![Recovered connector pads](img/pads.jpg)
+![Former printer-mainboard connector, signals and ESP32 wires](img/pads.jpg)
 
-The PSoC instead connects to `CS`, `SDA`, `SCL`, the touch controls and panel LEDs.
+| FPC pin | Recovered function | Destination | ESP32 GPIO |
+|---:|---|---|---:|
+| 40 | D0 (LSB) | Printer connector | 13 |
+| 39 | D1 | Printer connector | 14 |
+| 38 | D2 | Printer connector | 16 |
+| 37 | D3 | Printer connector | 17 |
+| 36 | D4 | Printer connector | 18 |
+| 35 | D5 | Printer connector | 19 |
+| 34 | D6 | Printer connector | 21 |
+| 33 | D7 (MSB) | Printer connector | 22 |
+| 32 | DCLK | Printer connector | 23 |
+| 31 | VSYNC | Printer connector | 26 |
+| 30 | HSYNC | Printer connector | 25 |
+| 29 | SCL | Cypress MCU | not connected |
+| 28 | SDA | Cypress MCU | not connected |
+| 27 | CS | Cypress MCU | not connected |
 
-## Backlight
+**Result:** `D0–D7`, `DCLK`, `HSYNC` and `VSYNC` bypass the Cypress entirely. The printer mainboard provided an 8-bit video stream. The connector pads are effectively a breakout of the display's raw inputs. The Cypress is associated with the serial-control pins, touch inputs and LEDs; it is **not the video controller**.
 
-Without the printer mainboard, the LCD accepts video but `LED_ANODE` stays at 0 V.
+The display was observed to accept video without sending additional serial commands from the ESP32. This does not prove that the LCD never needs initialization after a complete unpowered reset; the Cypress remains on the board.
 
-![Backlight investigation](img/backlight.jpg)
+**Bus contention:** do not connect an ESP32 output directly to `CS/SDA/SCL` while the CY8C20546 is also driving them. Its exact protocol has not been decoded here.
 
-For development, the backlight is powered from a conservative 3.3 V jumper to `LED_ANODE`.
+## Power: 3.3 V rail and FPC pins 1–26
 
-## Video format
+A 3.3 V supply applied to the **wide 3.3V trace** on the original HP panel board powers enough of the on-board circuit for the LCD to operate. The existing analog/charge-pump components around FPC pins 1–26 are kept in place; they do not need individual external wires.
 
-Early timing experiments produced a partial-width image:
+Those pins include functions such as **VCC, AVDD, PVDD, VCOM, VGH/VGL, charge-pump capacitor connections and LED-related terminals** on this panel family. This is a functional grouping, **not** an asserted pin-by-pin mapping for pins 1–26. Consult the A024CN02 VJ datasheet and measure the exact revision before bypassing any of the original circuits.
 
-![Wrong mode](img/third-of-screen.jpg)
+During the test, a **bulk electrolytic capacitor** and a **0.1 µF ceramic capacitor** were added near the board supply input. Polarity matters for the electrolytic; power the original rail at **3.3 V**, not directly at USB 5 V.
 
-After recovering the active timing and sequential RGB-dot arrangement, the panel could display a complete calibration frame:
+## Backlight path
 
-![Calibration](img/calibration.jpg)
+The LCD drew a picture without backlight illumination. With the printer mainboard absent, `LED_ANODE` read approximately 0 V.
 
-## From bit-banging to DMA
+![Backlight board area, LED anode and transistor traces](img/backlight.jpg)
 
-GPIO bit-banging proved the electrical pinout and sync timing, but short DCLK pauses caused white flashes.
+Hardware tracing indicated the following arrangement:
 
-The stable implementation therefore uses ESP32 I2S0 in LCD/parallel mode with DMA. DCLK, sync and data continue in hardware while the CPUs handle UI rendering, Wi-Fi, NTP and weather requests.
+- Two SOT-23 devices **Q11/Q12**, marked **`A2` / `2A`**, appear wired in parallel: their base/control connections route towards the printer connector; one common net goes to `LED_ANODE` and another to the six-pin device marked `XI`.
+- The **`XI`** part appears consistent with a **dual NPN digital transistor**, possibly Toshiba **RN1608** or a similar device. This is a working hypothesis, **not a verified part identification**.
+- Diode-test readings noted **≈ 660 mV** (pin 2 → 1) and **≈ 650 mV** (pin 5 → 4), open in the opposite test direction. A possible layout is `1=E1`, `2=IN1`, `6=C1`, `4=E2`, `5=IN2`, `3=C2`; confirm against the actual component before designing around it.
+- **L3** was traced and did not form part of the backlight supply route; an earlier boost-converter hypothesis was rejected.
 
-See the main [README](../README.md) for the full pinout and project overview.
+The related AUO datasheet lists a typical backlight rating around **3.8 V / 25 mA**. In this experiment, a temporary jumper from **3.3 V to `LED_ANODE`** illuminated it more dimly than the original. This is a recorded lab connection, **not** a generic recommendation to apply voltage directly to other LED modules. A permanent design should use controlled LED current after the specific panel has been characterized.
+
+## Reconstructing timing
+
+The initial bit-bang test proved connectivity but showed only part of the intended width and occasional white-screen flashes. The crucial recognition was the **UPS052 320RGB** input protocol, not a simple 480-byte-wide UPS051 stream.
+
+![Partial frame under the wrong interpretation](img/third-of-screen.jpg)
+
+In UPS052, **320 panel pixels × 4 DCLK samples** (`0, R, G, B`) occupy **1280 cycles** of each active line. The current firmware starts the active region at sample 256 within a **1544-cycle line**, with a **16 MHz** DCLK, and the panel handles its own delta colour-dot geometry.
+
+![Working full-width calibration frame](img/calibration.jpg)
+
+See the [line timing diagram](img/line-timing.svg) and the [hardware video pipeline diagram](img/block-diagram.svg); both correspond to the published UPS052 code, not the earlier 10 MHz experimental firmware.
+
+## Scope of the measurements
+
+Continuity and operation establish the digital bus and 3.3 V boot method. Q11/Q12 transistor function and the exact `XI` manufacturer/device remain provisional; the exact individual FPC power-pin assignment was **not** fully traced. Where a part identity is inferred, this document explicitly marks it as such.

@@ -1,2 +1,8 @@
-firmware/AUO_Weather/secrets.h
+# Local network credentials (keep the example tracked)
+**/secrets.h
+# Build output
 build/
+**/build/
+*.bin
+*.elf
+*.map

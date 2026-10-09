@@ -1,56 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="470" viewBox="0 0 960 470">
-  <rect x="0.5" y="0.5" width="959" height="469" rx="14" fill="#ffffff" stroke="#d0d7de"/>
-  <text x="40" y="38" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="19" font-weight="600" fill="#1f2328">Current line timing: 1640 DCLK samples @ 10 MHz (164 µs)</text>
-
-  <text x="40" y="66" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#57606a">HSYNC</text>
-  <polyline fill="none" stroke="#1f2328" stroke-width="2" points="40,96 72,96 72,74 920,74"/>
-
-  <rect x="40" y="116" width="32.2" height="48" fill="#cf222e"/>
-  <text x="56.1" y="145" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#fff">60</text>
-
-  <rect x="72.2" y="116" width="105.4" height="48" fill="#8c959f"/>
-  <text x="124.9" y="137" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#fff">back porch</text>
-  <text x="124.9" y="154" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#fff">196</text>
-
-  <rect x="177.6" y="116" width="688.4" height="48" fill="#0969da"/>
-  <text x="521.8" y="137" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#fff">active video</text>
-  <text x="521.8" y="154" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#fff">1280 samples = 160 logical RGB pixels × 8</text>
-
-  <rect x="866.0" y="116" width="54.0" height="48" fill="#8c959f"/>
-  <text x="893" y="137" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#fff">front</text>
-  <text x="893" y="154" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#fff">104</text>
-
-  <text x="40" y="186" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">0</text>
-  <text x="177.6" y="186" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">256 — active start (act0)</text>
-  <text x="920" y="186" text-anchor="end" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">1640</text>
-
-  <text x="40" y="232" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="15" font-weight="600" fill="#1f2328">One logical RGB pixel = 8 output samples</text>
-  <text x="40" y="254" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#57606a">Default pixel pattern in firmware: RRRGGGBB. Other 3/3/2 variants can be selected for calibration.</text>
-
-  <rect x="165" y="278" width="75" height="54" rx="7" fill="#e5534b"/>
-  <rect x="244" y="278" width="75" height="54" rx="7" fill="#e5534b"/>
-  <rect x="323" y="278" width="75" height="54" rx="7" fill="#e5534b"/>
-  <rect x="402" y="278" width="75" height="54" rx="7" fill="#2da44e"/>
-  <rect x="481" y="278" width="75" height="54" rx="7" fill="#2da44e"/>
-  <rect x="560" y="278" width="75" height="54" rx="7" fill="#2da44e"/>
-  <rect x="639" y="278" width="75" height="54" rx="7" fill="#2f81f7"/>
-  <rect x="718" y="278" width="75" height="54" rx="7" fill="#2f81f7"/>
-  <text x="202.5" y="311" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="18" font-weight="700" fill="#fff">R</text>
-  <text x="281.5" y="311" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="18" font-weight="700" fill="#fff">R</text>
-  <text x="360.5" y="311" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="18" font-weight="700" fill="#fff">R</text>
-  <text x="439.5" y="311" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="18" font-weight="700" fill="#fff">G</text>
-  <text x="518.5" y="311" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="18" font-weight="700" fill="#fff">G</text>
-  <text x="597.5" y="311" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="18" font-weight="700" fill="#fff">G</text>
-  <text x="676.5" y="311" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="18" font-weight="700" fill="#fff">B</text>
-  <text x="755.5" y="311" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="18" font-weight="700" fill="#fff">B</text>
-
-  <text x="40" y="382" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="15" font-weight="600" fill="#1f2328">One frame: 263 lines → 10 MHz / (1640 × 263) ≈ 23.2 fps</text>
-  <rect x="40" y="397" width="3.3" height="34" fill="#cf222e"/>
-  <rect x="43.3" y="397" width="59.3" height="34" fill="#8c959f"/>
-  <rect x="102.6" y="397" width="771.9" height="34" fill="#0969da"/>
-  <rect x="874.5" y="397" width="45.5" height="34" fill="#8c959f"/>
-  <text x="73" y="419" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#fff">18</text>
-  <text x="488.5" y="419" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#fff">234 visible lines</text>
-  <text x="897" y="419" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#fff">10</text>
-  <text x="40" y="451" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">VSYNC: 1 line</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="545" viewBox="0 0 1080 545">
+<rect x="0.5" y="0.5" width="1079" height="544" rx="14" fill="#fff" stroke="#d0d7de" />
+<g font-family="Arial,Helvetica,sans-serif" fill="#17212e">
+<text x="58" y="47" font-size="24" font-weight="700">AUO UPS052 320RGB — current ESP32 video timing</text>
+<text x="58" y="73" font-size="15" fill="#475569">DCLK 16 MHz · 1544 samples/line · 257 lines/frame · 40.3 frames/s</text>
+<text x="58" y="108" font-weight="700" font-size="17">One horizontal scanline</text>
+<rect x="58.0" y="120" width="36.72" height="60" fill="#dc2626" />
+<rect x="94.72" y="120" width="119.96" height="60" fill="#8b95a6" />
+<rect x="214.68" y="120" width="783.42" height="60" fill="#2563eb" />
+<rect x="998.1" y="120" width="4.90" height="60" fill="#94a3b8" />
+<text x="76.4" y="159" font-size="12" text-anchor="middle" fill="white">60</text>
+<text x="154.7" y="149" font-size="14" text-anchor="middle" fill="white">back</text>
+<text x="154.7" y="168" font-size="13" text-anchor="middle" fill="white">196</text>
+<text x="606.4" y="149" font-size="17" font-weight="700" text-anchor="middle" fill="white">1280 active DCLK</text>
+<text x="606.4" y="171" font-size="13" text-anchor="middle" fill="white">320 panel pixels × 4 samples</text>
+<text x="58.0" y="204" font-size="13">0</text>
+<text x="94.72" y="204" text-anchor="middle" font-size="13">60</text>
+<text x="214.68" y="204" text-anchor="middle" font-size="13">256: first pixel</text>
+<text x="998.1" y="204" text-anchor="end" font-size="13">1536</text>
+<text x="1003.0" y="223" text-anchor="end" font-size="13">1544: end (8 front)</text>
+<text x="58" y="256" font-size="17" font-weight="700">Input samples: two adjacent UPS052 pixels</text>
+<rect x="220" y="268" width="80" height="49" rx="5" fill="#64748b" /><text x="260" y="299" text-anchor="middle" font-weight="700" font-size="17" fill="white">0</text><rect x="306" y="268" width="80" height="49" rx="5" fill="#df5353" /><text x="346" y="299" text-anchor="middle" font-weight="700" font-size="17" fill="white">R</text><rect x="392" y="268" width="80" height="49" rx="5" fill="#16a34a" /><text x="432" y="299" text-anchor="middle" font-weight="700" font-size="17" fill="white">G</text><rect x="478" y="268" width="80" height="49" rx="5" fill="#2563eb" /><text x="518" y="299" text-anchor="middle" font-weight="700" font-size="17" fill="white">B</text><rect x="564" y="268" width="80" height="49" rx="5" fill="#64748b" /><text x="604" y="299" text-anchor="middle" font-weight="700" font-size="17" fill="white">0</text><rect x="650" y="268" width="80" height="49" rx="5" fill="#df5353" /><text x="690" y="299" text-anchor="middle" font-weight="700" font-size="17" fill="white">R</text><rect x="736" y="268" width="80" height="49" rx="5" fill="#16a34a" /><text x="776" y="299" text-anchor="middle" font-weight="700" font-size="17" fill="white">G</text><rect x="822" y="268" width="80" height="49" rx="5" fill="#2563eb" /><text x="862" y="299" text-anchor="middle" font-weight="700" font-size="17" fill="white">B</text>
+<text x="58" y="359" font-size="15">16-bit I2S sample: D0–D7 = data, bit 8 = HSYNC, bit 9 = VSYNC</text>
+<text x="58" y="382" font-size="15">WS drives inverted DCLK; consecutive 16-bit samples are pair-swapped in 32-bit DMA words</text>
+<text x="58" y="410" font-weight="700" font-size="17">One frame: 1 VSYNC + 18 back + 234 active + 4 front = 257 lines</text>
+<rect x="58.0" y="424" width="3.68" height="42" fill="#dc2626" />
+<rect x="61.68" y="424" width="66.19" height="42" fill="#8b95a6" />
+<rect x="127.86" y="424" width="860.43" height="42" fill="#2563eb" />
+<rect x="988.29" y="424" width="14.71" height="42" fill="#94a3b8" />
+<text x="58" y="493" font-size="14">16 MHz / (1544 × 257) ≈ 40.3 fps. At 20 MHz ≈ 50.4 fps, but that test was unstable.</text>
+<text x="58" y="518" font-size="13" fill="#475569">Actual firmware: H_SAMP=1544, ACT0_S=256, V_TOTAL=257, NBUF=6, AHEAD=3</text>
+</g></svg>

@@ -2,7 +2,7 @@
 
 This file contains the condensed hardware-teardown notes for the HP Photosmart TouchSmart LCD panel used in this repository.
 
-![Hardware overview](../overview.jpg)
+![Hardware overview](img/overview.jpg)
 
 ## Recovered hardware
 
@@ -18,7 +18,7 @@ The Cypress device is **not** in the framebuffer/video path.
 
 Continuity testing showed that `D0-D7`, `DCLK`, `HSYNC` and `VSYNC` run directly between the former printer-mainboard connector and the LCD FPC.
 
-![Recovered connector pads](../pads.jpg)
+![Recovered connector pads](img/pads.jpg)
 
 The PSoC instead connects to `CS`, `SDA`, `SCL`, the touch controls and panel LEDs.
 
@@ -26,7 +26,7 @@ The PSoC instead connects to `CS`, `SDA`, `SCL`, the touch controls and panel LE
 
 Without the printer mainboard, the LCD accepts video but `LED_ANODE` stays at 0 V.
 
-![Backlight investigation](../backlight.jpg)
+![Backlight investigation](img/backlight.jpg)
 
 For development, the backlight is powered from a conservative 3.3 V jumper to `LED_ANODE`.
 
@@ -34,11 +34,11 @@ For development, the backlight is powered from a conservative 3.3 V jumper to `L
 
 Early timing experiments produced a partial-width image:
 
-![Wrong mode](../third-of-screen.jpg)
+![Wrong mode](img/third-of-screen.jpg)
 
 After recovering the active timing and sequential RGB-dot arrangement, the panel could display a complete calibration frame:
 
-![Calibration](../calibration.jpg)
+![Calibration](img/calibration.jpg)
 
 ## From bit-banging to DMA
 

@@ -19,7 +19,7 @@ Reverse engineering of an **AUO 59.02A42.005** LCD salvaged from an HP printer. 
 | Active dot array | 480 × 234 physical RGB dots; UPS052 input 320 RGB pixels × 234 lines |
 | Interface | 8-bit parallel data + DCLK / HSYNC / VSYNC, 40-pin FPC |
 | Original board | HP Photosmart TouchSmart `CN245-60001` |
-| Panel controller | Cypress `CY8C20546-24PVXI` (touch/LED/serial control; **not** video) |
+| Panel controller | Cypress `CY8C20546-24PVXI` (touch/LED/serial control; **not** video) — disconnected from the LCD serial lines, see below |
 | Replacement MCU | ESP32 DevKit V1 / ESP-WROOM-32, without PSRAM |
 | Board supply | 3.3 V to the original power rail; existing analog voltage circuitry retained |
 | Backlight | development jumper from +3.3 V to `LED_ANODE` |
@@ -40,11 +40,17 @@ The HP Photosmart TouchSmart control board (PCB `CN245-60001`) contains a Cypres
 | 39 | D1 | GPIO14 | 32 | DCLK | GPIO23 |
 | 38 | D2 | GPIO16 | 31 | VSYNC | GPIO26 |
 | 37 | D3 | GPIO17 | 30 | HSYNC | GPIO25 |
-| 36 | D4 | GPIO18 | 29 | SCL | Cypress MCU |
-| 35 | D5 | GPIO19 | 28 | SDA | Cypress MCU |
-| 34 | D6 | GPIO21 | 27 | CS | Cypress MCU |
+| 36 | D4 | GPIO18 | 29 | SCL | not connected (Cypress pin lifted) |
+| 35 | D5 | GPIO19 | 28 | SDA | not connected (Cypress pin lifted) |
+| 34 | D6 | GPIO21 | 27 | CS | not connected (idle at 3.3 V) |
 
-The serial-control lines remain connected to the Cypress. Do **not** wire a second controller to them without isolating the PSoC first.
+### Why the Cypress had to be disconnected
+
+In longer use the panel occasionally came up after power-on in the wrong input mode: **UPS051** instead of UPS052 320RGB. The picture was stretched about 2.7× horizontally, shifted to the right, with scrambled colours, and it stayed that way until the next power cycle. Switching the ESP32 output to UPS051 timing made that state display correctly, which confirmed that the panel itself had changed mode (register `R3`, field `SEL`).
+
+The CY8C20546 is the only other device on the panel's serial-control lines. Without the printer mainboard it kept switching the LCD between modes on its own, so it had to be disconnected: its **`SDA` and `SCL` pins were lifted off the PCB**. It can no longer write to the panel, and the LCD runs on its default registers, which is exactly the UPS052 320RGB mode the firmware expects. `CS` sits at 3.3 V (inactive). The exact trigger inside the PSoC was not traced further.
+
+The panel-side `SDA`/`SCL` pads are now free. A future option is to drive them from the ESP32 and write the input mode explicitly at every boot (see [Further ideas](#further-ideas)).
 
 **Power:** 3.3 V on the wide `3.3V` PCB trace brings up the panel and its existing analog/charge-pump circuitry. An electrolytic capacitor and 0.1 µF ceramic capacitor were added at the power input.
 
@@ -216,6 +222,7 @@ The on-screen text is in Russian. The built-in 5×7 font has both Cyrillic and L
 - [ ] **≥ 50 Hz frame rate**, as the datasheet recommends: find out why 20 MHz drops out, try the integer-divider 16 MHz option and an exact 24.545 MHz from the APLL.
 - [ ] **Backlight brightness:** a transistor and PWM instead of the hard-wired 3.3 V, with night dimming.
 - [ ] **The panel's touch buttons** (↶ ◀ ▶ ✕ OK) through the CY8C20546, to switch screens.
+- [ ] **LCD registers from the ESP32:** now that the Cypress is off the serial lines, wire `SCL`/`SDA`/`CS` to the ESP32, force UPS052 320RGB at every boot and use the panel's own contrast, gamma and saturation registers.
 - [ ] **Multi-day forecast** and sunrise/sunset times on a second screen.
 
 ---

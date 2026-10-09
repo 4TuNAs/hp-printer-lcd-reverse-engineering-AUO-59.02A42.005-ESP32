@@ -214,19 +214,6 @@ The on-screen text is in Russian. The built-in 5×7 font has both Cyrillic and L
 
 ---
 
-## Further ideas
-
-- [ ] **Weather animation:** drifting clouds, rotating sun rays, falling rain and snow, lightning flashes, twinkling stars. The display is largely event-driven for timing stability; extend animations cautiously.
-- [ ] **Procedural sea** generated per line like the sky, with moving waves and highlights.
-- [ ] **Large temperature** ("24°") at full resolution, like the clock.
-- [ ] **≥ 50 Hz frame rate**, as the datasheet recommends: find out why 20 MHz drops out, try the integer-divider 16 MHz option and an exact 24.545 MHz from the APLL.
-- [ ] **Backlight brightness:** a transistor and PWM instead of the hard-wired 3.3 V, with night dimming.
-- [ ] **The panel's touch buttons** (↶ ◀ ▶ ✕ OK) through the CY8C20546, to switch screens.
-- [ ] **LCD registers from the ESP32:** now that the Cypress is off the serial lines, wire `SCL`/`SDA`/`CS` to the ESP32, force UPS052 320RGB at every boot and use the panel's own contrast, gamma and saturation registers.
-- [ ] **Multi-day forecast** and sunrise/sunset times on a second screen.
-
----
-
 ## References
 
 - [AUO A024CN02 VJ datasheet (PDF)](https://www.beyondinfinite.com/lcd/Library/Auo/A024CN02-VJ.pdf) — related panel family, UPS052 timing (section c-1), pinout and LED ratings. Exact panel revision may differ.

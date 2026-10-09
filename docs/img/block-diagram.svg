@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="500" viewBox="0 0 1120 500">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#57606a"/>
+    </marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="1119" height="499" rx="14" fill="#fff" stroke="#d0d7de"/>
+  <text x="40" y="38" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="20" font-weight="600" fill="#1f2328">ESP32 LCD pipeline</text>
+
+  <rect x="38" y="75" width="245" height="150" rx="12" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="160" y="101" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="15" font-weight="600" fill="#1f2328">Core 0</text>
+  <rect x="58" y="119" width="205" height="42" rx="8" fill="#ddf4ff" stroke="#54aeff"/>
+  <text x="160" y="136" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#1f2328">netTask</text>
+  <text x="160" y="151" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">Wi-Fi → NTP → Open-Meteo</text>
+  <rect x="58" y="174" width="205" height="36" rx="8" fill="#dafbe1" stroke="#4ac26b"/>
+  <text x="160" y="197" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#1f2328">controlTask / UI redraw</text>
+
+  <rect x="334" y="75" width="220" height="150" rx="12" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="444" y="101" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="15" font-weight="600" fill="#1f2328">RAM</text>
+  <rect x="354" y="119" width="180" height="44" rx="8" fill="#fff8c5" stroke="#d4a72c"/>
+  <text x="444" y="137" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#1f2328">framebuffer</text>
+  <text x="444" y="152" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">480×234, 4-bit / dot</text>
+  <rect x="354" y="174" width="180" height="36" rx="8" fill="#fff8c5" stroke="#d4a72c"/>
+  <text x="444" y="197" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#1f2328">RGB map / palette tables</text>
+
+  <rect x="605" y="75" width="210" height="150" rx="12" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="710" y="101" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="15" font-weight="600" fill="#1f2328">Core 1 / ISR</text>
+  <rect x="625" y="125" width="170" height="68" rx="8" fill="#ffebe9" stroke="#ff8182"/>
+  <text x="710" y="147" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#1f2328">I2S EOF interrupt</text>
+  <text x="710" y="164" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">fillLine()</text>
+  <text x="710" y="179" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#57606a">builds 2 lines ahead</text>
+
+  <rect x="875" y="75" width="205" height="150" rx="12" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="978" y="101" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="15" font-weight="600" fill="#1f2328">Video output</text>
+  <rect x="895" y="119" width="165" height="42" rx="8" fill="#eaeef2" stroke="#8c959f"/>
+  <text x="978" y="145" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#1f2328">4-line DMA ring</text>
+  <rect x="895" y="174" width="165" height="36" rx="8" fill="#ddf4ff" stroke="#54aeff"/>
+  <text x="978" y="197" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="600" fill="#1f2328">I2S0 LCD mode @ 10 MHz</text>
+
+  <line x1="263" y1="192" x2="354" y2="141" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="263" y1="140" x2="354" y2="192" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="534" y1="141" x2="625" y2="155" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="795" y1="159" x2="895" y2="140" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="978" y1="161" x2="978" y2="174" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="354" y="300" width="706" height="92" rx="12" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="707" y="327" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#1f2328">263 DMA descriptors loop continuously</text>
+  <text x="707" y="350" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#57606a">blank / VSYNC buffers + 4 active line buffers</text>
+  <text x="707" y="371" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#57606a">I2S0 drives D0-D7, HSYNC, VSYNC; WS is routed as inverted DCLK</text>
+
+  <line x1="978" y1="210" x2="978" y2="300" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="430" y="424" width="555" height="46" rx="10" fill="#0969da"/>
+  <text x="707" y="452" text-anchor="middle" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#fff">AUO 59.02A42.005 — D0-D7 + DCLK + HSYNC + VSYNC</text>
+  <line x1="707" y1="392" x2="707" y2="424" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+</svg>

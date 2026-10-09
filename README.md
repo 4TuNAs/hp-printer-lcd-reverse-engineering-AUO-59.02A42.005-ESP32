@@ -4,7 +4,7 @@ Reverse engineering and reuse of the raw RGB LCD from an HP Photosmart TouchSmar
 
 The original printer mainboard is removed. An ESP32 replaces it as the video source and drives the panel directly.
 
-![Finished clock](hero.jpg)
+![Finished clock](docs/img/hero.jpg)
 
 ## Project status
 
@@ -22,18 +22,12 @@ Working:
 - RGB/subpixel calibration
 - original HP TouchSmart panel housing
 
-Still being investigated:
-
-- exact factory subpixel mapping
-- final vertical alignment
-- original backlight-control circuit
-- Cypress serial initialization protocol
 
 ---
 
 ## Hardware
 
-![Hardware overview](overview.jpg)
+![Hardware overview](docs/img/overview.jpg)
 
 | Part | Details |
 |---|---|
@@ -56,7 +50,7 @@ This project started as a board-level teardown. There was no schematic for the H
 
 The original connector between the TouchSmart panel and the printer mainboard was removed. Its exposed pads were traced to the LCD FPC.
 
-![Host connector pads](pads.jpg)
+![Host connector pads](docs/img/pads.jpg)
 
 Eleven pads form the raw display interface:
 
@@ -110,7 +104,7 @@ The panel displays an image without the ESP32 sending anything over those serial
 
 The LCD initially produced an image but had no backlight. With the printer mainboard removed, `LED_ANODE` remained at 0 V.
 
-![Backlight tracing](backlight.jpg)
+![Backlight tracing](docs/img/backlight.jpg)
 
 The area around Q11/Q12 and the six-pin device marked `XI` was traced separately.
 
@@ -126,13 +120,13 @@ A valid image did not mean the bus interpretation was correct.
 
 Early timing experiments produced only part of the image:
 
-![Wrong display mode](third-of-screen.jpg)
+![Wrong display mode](docs/img/third-of-screen.jpg)
 
 The panel accepted sync, but the incoming RGB stream was being interpreted with the wrong pixel structure.
 
 After timing and subpixel experiments, a complete calibration image could be displayed:
 
-![Calibration](calibration.jpg)
+![Calibration](docs/img/calibration.jpg)
 
 The panel is closely related to the AUO A024CN02 family and uses an unusual sequential RGB-dot arrangement rather than a normal packed framebuffer.
 
@@ -200,7 +194,7 @@ The calibration screen contains:
 - grayscale gradient
 - hue gradient
 
-![RGB calibration screen](calibration.jpg)
+![RGB calibration screen](docs/img/calibration.jpg)
 
 The firmware supports adjustment of:
 
@@ -213,27 +207,3 @@ The firmware supports adjustment of:
 
 Calibration values can be stored in ESP32 Preferences.
 
----
-
-## Photos
-
-| Stage | Image |
-|---|---|
-| Finished clock | ![Finished clock](hero.jpg) |
-| Board / LCD / ESP32 overview | ![Overview](overview.jpg) |
-| Recovered host-connector pinout | ![Pads](pads.jpg) |
-| Backlight investigation | ![Backlight](backlight.jpg) |
-| Wrong timing / partial image | ![Partial image](third-of-screen.jpg) |
-| RGB calibration | ![Calibration](calibration.jpg) |
-
----
-
-## Notes
-
-The pinout and timings documented here apply to the tested HP/AUO board revision. Other revisions may differ.
-
-All interface information was recovered from hardware inspection, continuity measurements and experimentation.
-
-## Repository name
-
-`hp-printer-lcd-reverse-engineering-AUO-59.02A42.005-ESP32`

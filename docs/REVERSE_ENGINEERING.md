@@ -33,15 +33,29 @@ The printer-mainboard connector was desoldered to expose copper pads. Each pad w
 | 32 | DCLK | Printer connector | 23 |
 | 31 | VSYNC | Printer connector | 26 |
 | 30 | HSYNC | Printer connector | 25 |
-| 29 | SCL | Cypress MCU | not connected |
-| 28 | SDA | Cypress MCU | not connected |
-| 27 | CS | Cypress MCU | not connected |
+| 29 | SCL | Cypress MCU (pin later lifted) | not connected |
+| 28 | SDA | Cypress MCU (pin later lifted) | not connected |
+| 27 | CS | idle at 3.3 V | not connected |
 
 **Result:** `D0–D7`, `DCLK`, `HSYNC` and `VSYNC` bypass the Cypress entirely. The printer mainboard provided an 8-bit video stream. The connector pads are effectively a breakout of the display's raw inputs. The Cypress is associated with the serial-control pins, touch inputs and LEDs; it is **not the video controller**.
 
-The display was observed to accept video without sending additional serial commands from the ESP32. This does not prove that the LCD never needs initialization after a complete unpowered reset; the Cypress remains on the board.
+The display accepts video without any serial commands from the ESP32: with nothing writing to it, the LCD runs on its default registers, and the default input mode is UPS052 320RGB.
 
-**Bus contention:** do not connect an ESP32 output directly to `CS/SDA/SCL` while the CY8C20546 is also driving them. Its exact protocol has not been decoded here.
+## Cypress disconnected: spontaneous mode switching
+
+With the printer mainboard gone, the CY8C20546 turned out to be a problem. Occasionally after power-on the panel came up in **UPS051** mode instead of UPS052 320RGB:
+
+- the image was stretched about 2.7× horizontally and shifted to the right; only the left quarter of the frame was visible;
+- colours were scrambled, because the panel was reading each `0, R, G, B` byte as a separate colour dot;
+- the state persisted until the next power cycle. Hot re-plugging the FPC also cleared it, but that risks the LCD driver.
+
+**Diagnosis:** a test mode in the firmware switched the ESP32 output to UPS051 timing (480 one-byte dots per line, 10 MHz, 616-cycle lines). In the bad state this made the picture correct, so the panel itself had changed its input mode. According to the A024CN02 VJ datasheet this is register `R3`, field `SEL`: `000` = UPS051, `001` = UPS052 320RGB (the default).
+
+**Action:** the CY8C20546 is the only other device on the LCD serial-control lines, and it kept switching the panel between modes on its own. Its **`SDA` and `SCL` pins were lifted off the PCB**, so it can no longer clock anything into the LCD. `CS` measures 3.3 V (inactive). The PSoC stays on the board but is cut off from the display; the panel runs on its default registers, which is the UPS052 320RGB mode the firmware expects.
+
+The exact trigger inside the PSoC firmware was not traced further.
+
+**Serial interface for future use** (datasheet section 7): 16-bit frames, MSB first: 4-bit register address, `R/W` bit (`0` = write), 3 don't-care bits, 8 data bits. `CS` is active low, `SCL` idles high, and the panel samples `SDA` on the rising edge of `SCL`. With the Cypress disconnected, the panel-side `SDA`/`SCL` pads can be wired to the ESP32 to write `R3` explicitly at boot.
 
 ## Power: 3.3 V rail and FPC pins 1–26
 

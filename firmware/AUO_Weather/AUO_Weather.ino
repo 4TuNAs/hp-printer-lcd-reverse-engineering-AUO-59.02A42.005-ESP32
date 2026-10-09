@@ -45,8 +45,8 @@
 
 // ============================ НАСТРОЙКИ ==============================
 #define USE_WIFI    1        // Wi-Fi/NTP/Open-Meteo
-// Copy secrets.example.h to secrets.h and enter your own credentials.
-// secrets.h is intentionally excluded from version control.
+// Copy secrets.example.h to secrets.h and enter your own network credentials.
+// secrets.h is ignored by git.
 #if __has_include("secrets.h")
   #include "secrets.h"
 #else
@@ -803,7 +803,8 @@ bool setText(int slot, const char* s, int x, int y, int sx, int sy, C3 color, in
   t.sx = sx; t.sy = sy;
   t.color = color;
   t.ox = sx * 2 / 3; if (t.ox < 1) t.ox = 1;
-  t.oy = sy * 2 / 3; if (t.oy < 1) t.oy = 1;  int w = n * sx;
+  t.oy = sy * 2 / 3; if (t.oy < 1) t.oy = 1;
+  int w = n * sx;
   t.x0 = (align == AL_RIGHT) ? x - w : x;
   t.y0 = y;
   t.bx0 = t.x0 - sx;            t.by0 = t.y0 - sy;
@@ -1602,7 +1603,8 @@ C3 scene(int x, int y)
         int b = 95 + SIN8[(uint8_t)((h & 255) + animT * (2 + ((h >> 8) & 3)))];
         if (b > 0) { c = mix(c, {255, 252, 235}, b); star = true; }
       }
-    }    int h = mountH[x];
+    }
+    int h = mountH[x];
     if (h && y >= SEA_Y - h)
     {
       c = mix(pal.mount, skyRow[SEA_Y - 1], (SEA_Y - y) * 80 / (h + 1));

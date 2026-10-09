@@ -132,6 +132,21 @@ The panel is closely related to the AUO A024CN02 family and uses an unusual sequ
 
 RGB phase/order can also differ between alternating rows, so the firmware includes a calibration mode.
 
+### Current line timing
+
+The current firmware runs the LCD output at **10 MHz** with a 1640-sample line:
+
+- 60 samples HSYNC
+- 196 samples back porch
+- 1280 active samples
+- 104 samples front porch
+- 263 lines per frame: 1 VSYNC + 18 back porch + 234 visible + 10 front porch
+- effective frame rate: about **23.2 fps**
+
+Each logical RGB pixel is expanded to 8 output samples. The default pattern is `RRRGGGBB`, with alternative 3/3/2 patterns available for calibration.
+
+![Current LCD line and frame timing](docs/img/line-timing.svg)
+
 ## 5. Why GPIO bit-banging was abandoned
 
 Direct GPIO output was useful during the first stage because it proved:
@@ -159,6 +174,12 @@ The hardware continuously generates:
 The CPUs only prepare upcoming line buffers.
 
 This keeps the video stream running while the ESP32 simultaneously handles Wi-Fi, NTP, HTTP weather requests and UI rendering.
+
+### Firmware / video pipeline
+
+![ESP32 LCD DMA block diagram](docs/img/block-diagram.svg)
+
+The UI and network tasks run separately from the hardware video path. The framebuffer is converted into upcoming scanlines by the I2S EOF interrupt, placed into a four-line DMA ring, and streamed continuously by I2S0 to the panel.
 
 ---
 

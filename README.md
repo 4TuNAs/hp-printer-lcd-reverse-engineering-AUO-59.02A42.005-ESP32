@@ -50,7 +50,7 @@ In longer use the panel occasionally came up after power-on in the wrong input m
 
 The CY8C20546 is the only other device on the panel's serial-control lines. Without the printer mainboard it kept switching the LCD between modes on its own, so it had to be disconnected: its **`SDA` and `SCL` pins were lifted off the PCB**. It can no longer write to the panel, and the LCD runs on its default registers, which is exactly the UPS052 320RGB mode the firmware expects. `CS` sits at 3.3 V (inactive). The exact trigger inside the PSoC was not traced further.
 
-The panel-side `SDA`/`SCL` pads are now free. A future option is to drive them from the ESP32 and write the input mode explicitly at every boot (see [Further ideas](#further-ideas)).
+The panel-side `SDA`/`SCL` pads are now free. A future option is to drive them from the ESP32 and write the input mode explicitly at every boot.
 
 **Power:** 3.3 V on the wide `3.3V` PCB trace brings up the panel and its existing analog/charge-pump circuitry. An electrolytic capacitor and 0.1 µF ceramic capacitor were added at the power input.
 

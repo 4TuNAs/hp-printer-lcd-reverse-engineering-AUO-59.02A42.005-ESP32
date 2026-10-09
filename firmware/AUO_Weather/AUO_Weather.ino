@@ -1,9 +1,8 @@
 // =====================================================================
 //  AUO 59.02A42.005 (родственник A024CN02) -> ESP32 DevKit V1
 //  Часы + погода в Малаге
-//  RGB FIX: сохранена исходная I2S0+DMA структура; изменена только калибровка порядка субпикселей
 //
-//  Вывод на LCD:     I2S0 (режим LCD) + DMA, 10 МГц, точка = 8 отсчётов (3/3/2), ~23 к/с
+//  Вывод на LCD:     I2S0 + DMA, режим матрицы UPS052 320RGB (такты 0 R G B), DCLK 10..20 МГц
 //  Ядро 0 (control): перерисовка экрана по событиям, кнопка BOOT
 //  Ядро 0 (net):     окно связи раз в 10 минут: Wi-Fi -> NTP -> погода
 //                    (Open-Meteo) -> Wi-Fi полностью выключается
@@ -36,6 +35,7 @@
 #include "soc/gpio_sig_map.h"
 #include "esp_intr_alloc.h"
 #include "esp_rom_gpio.h"
+#include "driver/gpio.h"
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
   #include "esp_private/periph_ctrl.h"
 #else
@@ -45,16 +45,13 @@
 
 // ============================ НАСТРОЙКИ ==============================
 #define USE_WIFI    1        // Wi-Fi/NTP/Open-Meteo
-
-// Wi-Fi credentials live in secrets.h next to the sketch.
-// Copy secrets.example.h -> secrets.h and fill in your network.
-// secrets.h is ignored by git.
+// Copy secrets.example.h to secrets.h and enter your own credentials.
+// secrets.h is intentionally excluded from version control.
 #if __has_include("secrets.h")
   #include "secrets.h"
-#endif
-#ifndef WIFI_SSID
-  #define WIFI_SSID "your-wifi-name"
-  #define WIFI_PASS "your-wifi-password"
+#else
+  #define WIFI_SSID "YOUR_WIFI_SSID"
+  #define WIFI_PASS "YOUR_WIFI_PASSWORD"
 #endif
 
 
@@ -100,36 +97,22 @@ static const char* WEATHER_QUERY =
 #define H_FRONT    34
 #define V_SYNC     1
 #define V_BACK    18
-#define V_FRONT   10
+#define V_FRONT   4          // кадр 1+18+234+4 = 257 строк -> ~50 Гц при 20 МГц
 
 // Никакого программного срезания слева: выводим все 480 точек.
 #define X_SHIFT_DOTS 0
 
 
 // ================= КАЛИБРОВКА (меняется клавишами) ===================
-// Порядок физических субпикселей отдельно для двух групп строк.
-// 0=RGB, 1=RBG, 2=GRB, 3=GBR, 4=BRG, 5=BGR.
-// Это единственное изменение логики цвета относительно текущей I2S/DMA версии.
-static const uint8_t RGB_ORDER[6][3] =
-{
-  {0, 1, 2},   // RGB
-  {0, 2, 1},   // RBG
-  {1, 0, 2},   // GRB
-  {1, 2, 0},   // GBR
-  {2, 0, 1},   // BRG
-  {2, 1, 0}    // BGR
-};
-static const char* RGB_ORDER_NAME[6] = { "RGB", "RBG", "GRB", "GBR", "BRG", "BGR" };
-
-uint8_t rgbOrder[2] = {0, 4};  // группа строк A / B
+uint8_t phase[2] = {0, 1};     // строки 1,3,5... / 2,4,6...
 bool    mirX = false;
 bool    mirY = false;
 
 
 // ============================ БУФЕР ==================================
-// Кадровый буфер: 4 бита на цветную точку (2 точки в байте), DOTS/2 байт на строку.
-// Экономит 56 КБ — без этого Wi-Fi не хватает памяти.
-uint8_t* fb[LINES];
+// Кадровый буфер: RGB565, 160 пикселей x 234 строки x 2 байта = 75 КБ.
+// (8 бит на канал = 112 КБ — тогда Wi-Fi не хватает памяти.)
+uint16_t* fb[LINES];
 uint8_t  chanOf[2][DOTS];
 
 
@@ -185,25 +168,45 @@ struct Weather
 // =====================================================================
 
 
+#define SEA_Y  202                   // линия горизонта (нужна и выводу: небо/горы рисуются при выводе)
+
 // ---- АППАРАТНЫЙ ВЫВОД: I2S0 в режиме LCD + DMA ----
 // Такт DCLK, HSYNC, VSYNC и данные выдаёт железо, процессоры на сигнал не влияют.
 // 16-битные отсчёты: биты 0..7 = D0..D7, бит 8 = HSYNC, бит 9 = VSYNC, WS = DCLK.
-// Проверено (шаг 5): держится при любой нагрузке, включая Wi-Fi.
-// Геометрия строки в отсчётах I2S (10 МГц), подобрана на матрице (шаг 12):
-//   HSYNC=0 первые 60 отсчётов, картинка с 256-го, точка = 8 отсчётов
-//   (цвета 3/3/2), строка 1640 отсчётов, ~23 кадра/с.
-#define HS_S      60
-#define ACT0_S    256
-#define H_SAMP    1640
-#define V_TOTAL   (V_SYNC + V_BACK + LINES + V_FRONT)    // 263
+//
+// Матрица работает в режиме UPS052 320RGB (даташит, раздел c-1):
+//   пиксель = 4 такта: R, G, B, пусто(00); 320 пикселей = 1280 тактов;
+//   задний отступ 220..283 (берём 256, проверено на линейке), строка 1472..1644,
+//   DCLK 16..27 МГц, кадр >= 50 Гц. Дельта-раскладку матрица делает сама.
+// Наш логический пиксель (160 по ширине) уходит двумя пикселями матрицы.
+#define HS_S      60                    // HSYNC = 0, тактов
+#define ACT0_S    256                   // начало картинки (задний отступ)
+#define H_SAMP    1544                  // строка: 256 + 1280 + 8
+#define V_TOTAL   (V_SYNC + V_BACK + LINES + V_FRONT)    // 257
 #define V_ACT0    (V_SYNC + V_BACK)
-#define CLK_DIV   4          // 160 МГц / 4 / 2 / 2 = 10 МГц
 #define BCK_DIV   2
-#define CLK_INV   1          // проверено: работает только инвертированный DCLK
 #define HS_BIT    (1u << 8)
 #define VS_BIT    (1u << 9)
-#define NBUF      4          // кольцо буферов активных строк (экономия памяти)
-#define AHEAD     2          // заполняем строку на 2 вперёд
+#define NBUF      6          // кольцо буферов активных строк
+#define AHEAD     3          // заполняем строку на 3 вперёд
+
+// переключаемые из консоли (сохраняются):
+//   'f' частота DCLK: 160 МГц / (N + B/A) / 4
+//   частота = 160 МГц / (N + B/A) / BCK / 2
+struct ClkOpt { uint8_t n, b, a, bck; const char* name; };
+#define NCLK 5
+static const ClkOpt CLK_OPTS[NCLK] =
+{
+  { 4, 0, 1, 2, "10" },
+  { 3, 0, 1, 2, "13.3" },
+  { 2, 1, 2, 2, "16 (дробный)" },
+  { 2, 0, 1, 2, "20" },
+  { 5, 0, 1, 1, "16 (целый)" },
+};
+volatile uint8_t clkSel  = 2;           // 2 = 16 МГц (проверено: лучше всего)
+volatile bool    clkInv  = true;        // 'i': инверсия DCLK (проверено: нужна)
+volatile bool    pairSwap = true;       // 'o': порядок отсчётов в паре (проверено: 1)
+volatile uint8_t slotRot = 1;           // 'k': сдвиг пикселя по тактам; 1 = 0,R,G,B (проверено)
 
 DMA_ATTR uint16_t lineBuf[NBUF][H_SAMP];
 DMA_ATTR uint16_t blankBuf[H_SAMP];
@@ -217,90 +220,131 @@ typedef struct DmaDesc
 } DmaDesc;
 DMA_ATTR DmaDesc lcdDesc[V_TOTAL];
 
-// у ESP32 в 16-битном режиме отсчёты идут парами наоборот
-#define SIDX(s) ((s) ^ 1)
-
 void fillBlank(uint16_t* b, bool vsLow)
 {
   uint16_t vs = vsLow ? 0 : VS_BIT;
   for (int s = 0; s < H_SAMP; s++)
-    b[SIDX(s)] = vs | (s < HS_S ? 0 : HS_BIT);
+    b[s ^ 1] = vs | (s < HS_S ? 0 : HS_BIT);     // HSYNC/VSYNC одинаковы в паре — порядок не важен
 }
 
-// заполнить активную часть буфера строкой y из fb (вызывается в прерывании)
-// каждые 3 байта fb (3 цветные точки) -> 8 отсчётов: 3 + 3 + 2
-// Тонкая подстройка (консоль: 'a', '[' ']'), сохраняется в Preferences:
-//   pixPat — как 8 отсчётов точки делятся на цвета (R,G,B, K = тёмный разделитель)
-//   act0   — начало картинки в отсчётах после HSYNC (сдвиг на 1 = ~1/3 цветной точки)
-#define NPAT 8
-// индексы: 0 = R, 1 = G, 2 = B, 3 = K (тёмный)
-DRAM_ATTR static const uint8_t PIX_PAT[NPAT][8] =
+// 5/6 бит -> отсчёт (8 бит данных + HSYNC=1 + VSYNC=1); заполняются в buildLuts()
+DRAM_ATTR static uint16_t L5[32];
+DRAM_ATTR static uint16_t L6[64];
+void buildLuts()
 {
-  { 0, 0, 0, 1, 1, 1, 2, 2 },   // 1 RRRGGGBB
-  { 0, 0, 0, 1, 1, 2, 2, 2 },   // 2 RRRGGBBB
-  { 0, 0, 1, 1, 1, 2, 2, 2 },   // 3 RRGGGBBB
-  { 0, 0, 0, 1, 1, 3, 2, 2 },   // 4 RRRGGKBB
-  { 0, 0, 0, 1, 3, 2, 2, 2 },   // 5 RRRGKBBB
-  { 0, 0, 1, 1, 3, 2, 2, 2 },   // 6 RRGGKBBB
-  { 0, 0, 0, 1, 1, 1, 3, 2 },   // 7 RRRGGGKB
-  { 0, 3, 1, 1, 1, 2, 2, 2 },   // 8 RKGGGBBB
-};
-DRAM_ATTR static const char* const PAT_NAME[NPAT] =
-{ "RRRGGGBB", "RRRGGBBB", "RRGGGBBB", "RRRGGKBB", "RRRGKBBB", "RRGGKBBB", "RRRGGGKB", "RKGGGBBB" };
-volatile uint8_t pixPat = 0;
-volatile int     act0   = ACT0_S;
-volatile bool    bandMode = false;   // 'b': 8 полос сверху, в полосе k сдвиг act0+k
-volatile bool    patBand  = false;   // 'n': 8 полос сверху, в полосе k раскладка k
+  for (int i = 0; i < 32; i++) L5[i] = 0x300 | (uint16_t)((i << 3) | (i >> 2));
+  for (int i = 0; i < 64; i++) L6[i] = 0x300 | (uint16_t)((i << 2) | (i >> 4));
+}
 
+// Пара отсчётов (a, затем b) одним 32-битным словом с учётом порядка в паре
+static inline uint32_t IRAM_ATTR pairWord(uint16_t a, uint16_t b, bool sw)
+{
+  return sw ? (((uint32_t)a << 16) | b) : (((uint32_t)b << 16) | a);
+}
+
+// ---------------- ФОН «НА ЛЕТУ» (небо + горы) ----------------
+// Небо и горы НЕ хранятся в кадровом буфере: при выводе строки они берутся из
+// маленьких таблиц — полные 320 точек по ширине и 8 бит на цвет (без ступенек).
+// В кадровом буфере там, где на небе ничего не нарисовано, лежит FB_KEY («прозрачно»).
+#define FB_KEY      0x0821          // почти чёрный; настоящий цвет с таким кодом сдвигается на 1
+#define MOUNT_MAXH  20
+DRAM_ATTR uint32_t skyW[SEA_Y][2];                         // цвет неба на строку (2 слова = 4 такта)
+DRAM_ATTR uint32_t mountW[MOUNT_MAXH + 1][MOUNT_MAXH + 1][2]; // [dy = SEA_Y - y][h]
+DRAM_ATTR uint8_t  mhP[320];                               // высота гор на колонку матрицы
+
+// Заполнить строку y: каждый логический пиксель (R,G,B из fb) -> R G B 0 R G B 0
 static inline void IRAM_ATTR fillLine(uint16_t* b, int y)
 {
   uint8_t mask = lineMask;
   bool hide = (mask == 1 && (y & 1)) || (mask == 2 && !(y & 1));
+  bool sw = pairSwap;
   const uint16_t base = VS_BIT | HS_BIT;
-  int s = act0;
-  if (bandMode && y < 144) s += y / 18;      // полосы 1..8 по 18 строк
+  uint32_t* w = (uint32_t*)(b + ACT0_S);          // ACT0_S чётное
   if (hide)
   {
-    for (int i = 0; i < (DOTS / 3) * 8; i++) b[SIDX(s + i)] = base;
+    uint32_t z = pairWord(base, base, sw);
+    for (int i = 0; i < 1280 / 2; i++) w[i] = z;
     return;
   }
-  const uint8_t* pt = PIX_PAT[(patBand && y < 144) ? (y / 18) : pixPat];
-  const uint8_t* p = fb[y];
-  uint16_t v[8];
-  // 3 байта fb = 6 цветных точек (по 4 бита) = 2 логических пикселя = 16 отсчётов
-  for (int i = 0; i < DOTS / 2; i += 3)
+  const uint16_t* p = fb[y];
+  // такт j пикселя матрицы берёт v[(j - rot) & 3], где v = {R, G, B, 0}
+  // rot = 1 -> такты: 0, R, G, B (так ждёт матрица)
+  const int r = slotRot & 3;
+  const int i0 = (0 - r) & 3, i1 = (1 - r) & 3, i2 = (2 - r) & 3, i3 = (3 - r) & 3;
+  uint16_t v[4];
+  v[3] = base;
+  int ly = mirY ? (LINES - 1 - y) : y;          // логическая строка (для неба/гор)
+  bool sky = ly < SEA_Y;
+  const uint32_t* skw = sky ? skyW[ly] : skyW[0];
+  int dy = SEA_Y - ly;                            // 1.. над горизонтом
+  bool mountRows = sky && dy <= MOUNT_MAXH;
+  // каждый логический пиксель -> 2 пикселя матрицы (по 4 такта)
+  for (int i = 0; i < DOTS / 3; i++, w += 4)
   {
-    uint8_t b0 = p[i], b1 = p[i + 1], b2 = p[i + 2];
-    v[0] = base | (uint16_t)((b0 & 15) * 17); v[1] = base | (uint16_t)((b0 >> 4) * 17);
-    v[2] = base | (uint16_t)((b1 & 15) * 17); v[3] = base | (uint16_t)((b1 >> 4) * 17);
-    v[4] = base | (uint16_t)((b2 & 15) * 17); v[5] = base | (uint16_t)((b2 >> 4) * 17);
-    // второй пиксель: R,G,B = v[3..5], K = base; первый: R,G,B = v[0..2], K = base
-    v[6] = base; v[7] = base;
-    for (int k = 0; k < 8; k++) { uint8_t t = pt[k]; b[SIDX(s + k)] = (t == 3) ? base : v[t]; }
-    for (int k = 0; k < 8; k++) { uint8_t t = pt[k]; b[SIDX(s + 8 + k)] = (t == 3) ? base : v[3 + t]; }
-    s += 16;
+    uint16_t px = p[i];
+    if (px == FB_KEY && sky)
+    {
+      // прозрачно: небо или горы, отдельно для каждой из двух колонок матрицы
+      const uint32_t* s0 = skw;
+      const uint32_t* s1 = skw;
+      if (mountRows)
+      {
+        int h0 = mhP[2 * i], h1 = mhP[2 * i + 1];
+        if (h0 >= dy) s0 = mountW[dy][h0];
+        if (h1 >= dy) s1 = mountW[dy][h1];
+      }
+      w[0] = s0[0]; w[1] = s0[1]; w[2] = s1[0]; w[3] = s1[1];
+    }
+    else
+    {
+      v[0] = L5[px >> 11]; v[1] = L6[(px >> 5) & 63]; v[2] = L5[px & 31];
+      uint32_t a0 = pairWord(v[i0], v[i1], sw), a1 = pairWord(v[i2], v[i3], sw);
+      w[0] = a0; w[1] = a1; w[2] = a0; w[3] = a1;
+    }
   }
 }
 
-// перезаполнить пустые части всех буферов (после сдвига act0)
+// перезаполнить пустые части всех буферов
 void refillAllLineBufs()
 {
   for (int i = 0; i < NBUF; i++) fillBlank(lineBuf[i], false);
 }
 
+volatile uint32_t isrMaxCyc = 0;     // макс. время прерывания (тактов CPU)
+volatile uint32_t isrSkip   = 0;     // сколько раз пропущены строки
+static int isrLastLine = -1;
+
 void IRAM_ATTR lcdIsr(void*)
 {
+  uint32_t c0 = xthal_get_ccount();
   uint32_t st = I2S0.int_st.val;
   I2S0.int_clr.val = st;
   if (!(st & I2S_OUT_EOF_INT_ST)) return;
   DmaDesc* d = (DmaDesc*)I2S0.out_eof_des_addr;
   int line = d - lcdDesc;
   if (line < 0 || line >= V_TOTAL) return;
-  if (line == V_TOTAL - 1) frameCount++;
-  int t = line + AHEAD;
-  if (t >= V_TOTAL) t -= V_TOTAL;
-  int y = t - V_ACT0;
-  if (y >= 0 && y < LINES) fillLine(lineBuf[y % NBUF], y);
+  // сколько строк прошло с прошлого раза (обычно 1; больше — значит, пропуск)
+  int n = 1;
+  if (isrLastLine >= 0)
+  {
+    n = line - isrLastLine;
+    if (n <= 0) n += V_TOTAL;
+    if (n > 1) isrSkip++;
+    if (n > AHEAD - 1) n = AHEAD - 1;         // не трогаем строку, которую DMA выводит сейчас
+  }
+  isrLastLine = line;
+  if (line == V_TOTAL - 1 || (n > 1 && line < n)) frameCount++;
+  // заполнить все строки, которые должны были заполниться (с догоном)
+  for (int k = n - 1; k >= 0; k--)
+  {
+    int t = line + AHEAD - k;
+    if (t >= V_TOTAL) t -= V_TOTAL;
+    if (t < 0) t += V_TOTAL;
+    int y = t - V_ACT0;
+    if (y >= 0 && y < LINES) fillLine(lineBuf[y % NBUF], y);
+  }
+  uint32_t dc = xthal_get_ccount() - c0;
+  if (dc > isrMaxCyc) isrMaxCyc = dc;
 }
 
 void startLcdOutput()
@@ -331,10 +375,12 @@ void startLcdOutput()
   for (int i = 0; i < 10; i++)
   {
     pinMode(pins[i], OUTPUT);
+    gpio_set_drive_capability((gpio_num_t)pins[i], GPIO_DRIVE_CAP_3);   // максимальная сила выхода
     esp_rom_gpio_connect_out_signal(pins[i], I2S0O_DATA_OUT8_IDX + i, false, false);
   }
   pinMode(LCD_DCLK, OUTPUT);
-  esp_rom_gpio_connect_out_signal(LCD_DCLK, I2S0O_WS_OUT_IDX, CLK_INV, false);
+  gpio_set_drive_capability((gpio_num_t)LCD_DCLK, GPIO_DRIVE_CAP_3);
+  esp_rom_gpio_connect_out_signal(LCD_DCLK, I2S0O_WS_OUT_IDX, clkInv, false);
 
   periph_module_enable(PERIPH_I2S0_MODULE);
 
@@ -350,13 +396,13 @@ void startLcdOutput()
 
   I2S0.sample_rate_conf.val = 0;
   I2S0.sample_rate_conf.tx_bits_mod = 16;
-  I2S0.sample_rate_conf.tx_bck_div_num = BCK_DIV;
+  I2S0.sample_rate_conf.tx_bck_div_num = CLK_OPTS[clkSel].bck;
 
   I2S0.clkm_conf.val = 0;
   I2S0.clkm_conf.clka_en = 0;
-  I2S0.clkm_conf.clkm_div_a = 1;
-  I2S0.clkm_conf.clkm_div_b = 0;
-  I2S0.clkm_conf.clkm_div_num = CLK_DIV;
+  I2S0.clkm_conf.clkm_div_a = CLK_OPTS[clkSel].a;
+  I2S0.clkm_conf.clkm_div_b = CLK_OPTS[clkSel].b;
+  I2S0.clkm_conf.clkm_div_num = CLK_OPTS[clkSel].n;
   I2S0.clkm_conf.clk_en = 1;
 
   I2S0.fifo_conf.val = 0;
@@ -420,28 +466,67 @@ static inline C3 mixF(const C3& a, const C3& b, float t)   // t = 0..1
 void rebuildChan()
 {
   for (int p = 0; p < 2; p++)
-  {
-    const uint8_t* ord = RGB_ORDER[rgbOrder[p] % 6];
     for (int x = 0; x < DOTS; x++)
-      chanOf[p][x] = ord[x % 3];
-  }
+      chanOf[p][x] = x % 3;      // UPS052: R,G,B подряд, дельту делает матрица
 }
 
 
-// Логическая точка (x,y) -> физическая точка матрицы, берём нужный канал
-static inline void putC(int x, int y, const C3& c)
+// Логический пиксель p (0..159) строки y: все три канала из ОДНОГО цвета c.
+// Пиксель матрицы = полубайты 3p (R), 3p+1 (G), 3p+2 (B).
+// 'd': дизеринг 0 = выкл, 1 = везде, 2 = только фон (небо/горы/море), текст и иконки чистые
+volatile uint8_t ditherMode = 2;
+bool sceneIsBg = true;              // scene() сообщает: пиксель — чистый фон (без текста/иконок)
+bool scenePureSky = false;          // scene() сообщает: чистое небо/горы (без звёзд и рисунка)
+static inline void putPix(int p, int y, const C3& c, bool bg)
 {
-  int px = mirX ? (DOTS - 1 - x) : x;
+  int pp = mirX ? (DOTS / 3 - 1 - p) : p;
   int py = mirY ? (LINES - 1 - y) : y;
-  uint8_t ch = chanOf[py & 1][px];
-  int v = (ch == 0) ? c.r : (ch == 1) ? c.g : c.b;
-  // 8 бит -> 4 бита с упорядоченным дизерингом 4x4 (плавные переходы без ступенек)
   static const uint8_t BAYER[4][4] = { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
-  int q = (clamp8(v) + BAYER[py & 3][px & 3]) >> 4;
-  if (q > 15) q = 15;
-  uint8_t* r = &fb[py][px >> 1];
-  if (px & 1) *r = (*r & 0x0F) | (q << 4);
-  else        *r = (*r & 0xF0) | q;
+  bool dz = (ditherMode == 1) || (ditherMode == 2 && bg);
+  int d = dz ? BAYER[py & 3][pp & 3] : 8;        // 0..15
+  // 8 бит -> 5/6/5 бит с упорядоченным дизерингом
+  int qr = (clamp8(c.r) + (d >> 1)) >> 3; if (qr > 31) qr = 31;
+  int qg = (clamp8(c.g) + (d >> 2)) >> 2; if (qg > 63) qg = 63;
+  int qb = (clamp8(c.b) + (d >> 1)) >> 3; if (qb > 31) qb = 31;
+  uint16_t v16 = (uint16_t)((qr << 11) | (qg << 5) | qb);
+  if (v16 == FB_KEY) v16 ^= 1;                   // не путать с «прозрачным»
+  fb[py][pp] = v16;
+}
+
+static inline void putKey(int p, int y)
+{
+  int pp = mirX ? (DOTS / 3 - 1 - p) : p;
+  int py = mirY ? (LINES - 1 - y) : y;
+  fb[py][pp] = FB_KEY;
+}
+
+// Строка y, точки [x0, x1): пиксель p закрывает точки 3p, 3p+1, 3p+2 —
+// считаем сцену во всех трёх и усредняем (ровные сглаженные края, без цветной каймы).
+// Если все три — чистое небо/горы, пишем «прозрачно»: фон нарисует вывод сам.
+static inline void renderRow(int y, int x0, int x1, C3 (*fn)(int, int))
+{
+  int p0 = x0 / 3, p1 = (x1 + 2) / 3;
+  if (p1 > DOTS / 3) p1 = DOTS / 3;
+  for (int p = p0; p < p1; p++)
+  {
+    int sr = 0, sg = 0, sb = 0;
+    bool allSky = true, allBg = true;
+    for (int k = 0; k < 3; k++)
+    {
+      sceneIsBg = true;
+      scenePureSky = false;
+      C3 c = fn(p * 3 + k, y);
+      sr += c.r; sg += c.g; sb += c.b;
+      allSky &= scenePureSky;
+      allBg  &= sceneIsBg;
+    }
+    if (allSky) putKey(p, y);                 // небо/горы нарисует вывод сам, в полном качестве
+    else
+    {
+      C3 c = { (sr + 1) / 3, (sg + 1) / 3, (sb + 1) / 3 };
+      putPix(p, y, c, allBg);
+    }
+  }
 }
 
 
@@ -466,7 +551,7 @@ C3 hue(int h)
 void drawCalibration()
 {
   for (int y = 0; y < LINES; y++)
-    for (int x = 0; x < DOTS; x++)
+    for (int x = 1; x < DOTS; x += 3)          // центр каждого пикселя
     {
       C3 c = {0, 0, 0};
       if (y < 150)
@@ -478,7 +563,7 @@ void drawCalibration()
       }
       else if (y >= 156 && y < 192) { int v = x * 255 / (DOTS - 1); c = {v, v, v}; }
       else if (y >= 198) c = hue(x * 1535 / (DOTS - 1));
-      putC(x, y, c);
+      putPix(x / 3, y, c, false);
     }
 }
 
@@ -718,8 +803,7 @@ bool setText(int slot, const char* s, int x, int y, int sx, int sy, C3 color, in
   t.sx = sx; t.sy = sy;
   t.color = color;
   t.ox = sx * 2 / 3; if (t.ox < 1) t.ox = 1;
-  t.oy = sy * 2 / 3; if (t.oy < 1) t.oy = 1;
-  int w = n * sx;
+  t.oy = sy * 2 / 3; if (t.oy < 1) t.oy = 1;  int w = n * sx;
   t.x0 = (align == AL_RIGHT) ? x - w : x;
   t.y0 = y;
   t.bx0 = t.x0 - sx;            t.by0 = t.y0 - sy;
@@ -806,7 +890,8 @@ int strokeCov(const TextItem& t, int x, int y)
 
 
 static inline int glyphCov(const TextItem& t, int x, int y)
-{  return (t.sx >= 6) ? strokeCov(t, x, y) : textCov(t, x, y);
+{
+  return (t.sx >= 6) ? strokeCov(t, x, y) : textCov(t, x, y);
 }
 
 
@@ -900,7 +985,7 @@ int demoIdx = 0;                     // 0 = выкл, 1..NUM_DEMOS
 // =====================================================================
 
 
-#define SEA_Y  202                   // линия горизонта
+// SEA_Y (линия горизонта) определён выше, в разделе вывода
 
 
 struct Palette
@@ -923,6 +1008,8 @@ int curMode = MODE_NIGHT;
 uint32_t animT = 0;                  // счётчик кадров анимации
 float secFrac = 0;                   // доля минуты (полоска секунд)
 float subSec  = 0;                   // доля секунды (мигание двоеточия)
+bool  colonOn = true;                // двоеточие: горит половину периода, половину погашено
+#define COLON_PERIOD_S  2            // период мигания двоеточия, секунд (1 с горит, 1 с нет)
 
 
 static C3 desat(const C3& c, int k)  // приглушить цвет к серому
@@ -978,6 +1065,7 @@ void applyPalette(int mode, int icon)
 
   for (int y = 0; y < SEA_Y; y++)
     skyRow[y] = mix(pal.skyTop, pal.skyBot, y * 256 / (SEA_Y - 1));
+  buildBgTables();
 }
 
 
@@ -989,6 +1077,35 @@ void initMountains()
     float hr = 11.0f - fabsf(x - 410.0f) * 0.09f + 2.0f * sinf(x * 0.13f + 2.0f);
     float h = hl > hr ? hl : hr;
     mountH[x] = h > 0 ? (uint8_t)h : 0;
+  }
+}
+
+
+// Цвет -> 2 слова DMA (4 такта пикселя матрицы) с текущим порядком тактов
+static void colorWords(const C3& c, uint32_t out[2])
+{
+  uint16_t v[4] = { (uint16_t)(0x300 | clamp8(c.r)), (uint16_t)(0x300 | clamp8(c.g)),
+                    (uint16_t)(0x300 | clamp8(c.b)), (uint16_t)0x300 };
+  int r = slotRot & 3;
+  int i0 = (0 - r) & 3, i1 = (1 - r) & 3, i2 = (2 - r) & 3, i3 = (3 - r) & 3;
+  out[0] = pairWord(v[i0], v[i1], pairSwap);
+  out[1] = pairWord(v[i2], v[i3], pairSwap);
+}
+
+// Пересчитать таблицы фона (после смены палитры, зеркала, порядка тактов)
+void buildBgTables()
+{
+  for (int y = 0; y < SEA_Y; y++) colorWords(skyRow[y], skyW[y]);
+  for (int dy = 1; dy <= MOUNT_MAXH; dy++)
+    for (int h = dy; h <= MOUNT_MAXH; h++)
+      colorWords(mix(pal.mount, skyRow[SEA_Y - 1], dy * 80 / (h + 1)), mountW[dy][h]);
+  for (int xp = 0; xp < 320; xp++)
+  {
+    int lx = mirX ? (319 - xp) : xp;               // колонка матрицы -> логическая
+    int x = (lx * 3 + 1) / 2;                      // -> точка сцены 0..479
+    if (x > DOTS - 1) x = DOTS - 1;
+    int h = mountH[x];
+    mhP[xp] = (uint8_t)(h > MOUNT_MAXH ? MOUNT_MAXH : h);
   }
 }
 
@@ -1118,13 +1235,13 @@ C3 clockLayer(C3 c, int x, int y)
     float a1 = discF(u0 - 12, v - 70, 9);
     float a2 = discF(u0 - 12, v - 146, 9);
     float a  = a1 > a2 ? a1 : a2;
+    if (!colonOn) return c;                        // погашено — только фон
     if (a > 0)
     {
       float s1 = discF(u0 - 12 - 5, v - 70 - 7, 9), s2 = discF(u0 - 12 - 5, v - 146 - 7, 9);
       float sh = s1 > s2 ? s1 : s2;
       c = mixF(c, {0, 0, 15}, sh * 0.45f);
-      float pulse = 0.35f + 0.65f * (1.0f - subSec) * (1.0f - subSec);
-      c = mixF(c, pal.clock, a * pulse);
+      c = mixF(c, pal.clock, a);
     }
     else
     {
@@ -1472,6 +1589,7 @@ C3 textLayer(C3 c, const TextItem& t, int x, int y)
 C3 scene(int x, int y)
 {
   C3 c;
+  bool star = false;
   if (y < SEA_Y)
   {
     c = skyRow[y];
@@ -1482,12 +1600,14 @@ C3 scene(int x, int y)
       {
         uint32_t h = hash32(idx);
         int b = 95 + SIN8[(uint8_t)((h & 255) + animT * (2 + ((h >> 8) & 3)))];
-        if (b > 0) c = mix(c, {255, 252, 235}, b);
+        if (b > 0) { c = mix(c, {255, 252, 235}, b); star = true; }
       }
-    }
-    int h = mountH[x];
+    }    int h = mountH[x];
     if (h && y >= SEA_Y - h)
+    {
       c = mix(pal.mount, skyRow[SEA_Y - 1], (SEA_Y - y) * 80 / (h + 1));
+      star = false;
+    }
   }
   else
   {
@@ -1495,6 +1615,7 @@ C3 scene(int x, int y)
   }
 
 
+  C3 bg = c;
   if (x >= ICON_X0 && x < ICON_X1 && y >= ICON_Y0 && y < ICON_Y1) c = iconLayer(c, x, y);
   if (x >= CLK_X0  && x < CLK_X1  && y >= CLK_RY0 && y < CLK_RY1) c = clockLayer(c, x, y);
   if (x >= SEC_X0  && x < SEC_X1  && y >= SEC_Y0  && y < SEC_Y1)  c = secLayer(c, x);
@@ -1506,6 +1627,9 @@ C3 scene(int x, int y)
     if (t.ncol && x >= t.bx0 && x < t.bx1 && y >= t.by0 && y < t.by1)
       c = textLayer(c, t, x, y);
   }
+  // если поверх фона что-то нарисовано (текст, цифры, иконка) — без дизеринга
+  sceneIsBg = (c.r == bg.r && c.g == bg.g && c.b == bg.b);
+  scenePureSky = (y < SEA_Y) && !star && sceneIsBg;
   return c;
 }
 
@@ -1517,8 +1641,7 @@ void redrawRect(int x0, int y0, int x1, int y1)
   if (x1 > DOTS) x1 = DOTS;
   if (y1 > LINES) y1 = LINES;
   for (int y = y0; y < y1; y++)
-    for (int x = x0; x < x1; x++)
-      putC(x, y, scene(x, y));
+    renderRow(y, x0, x1, scene);
 }
 
 
@@ -1605,7 +1728,8 @@ int computeMode(bool timeValid, const struct tm& lt)
 // =====================================================================
 
 
-static bool findNum(const char* from, const char* key, float& out){
+static bool findNum(const char* from, const char* key, float& out)
+{
   const char* p = strstr(from, key);
   if (!p) return false;
   p += strlen(key);
@@ -1833,8 +1957,7 @@ void renderDashboardStatic()
   // LCD при этом продолжает непрерывно сканироваться на core 1.
   for (int y = 0; y < LINES; y++)
   {
-    for (int x = 0; x < DOTS; x++)
-      putC(x, y, scene(x, y));
+    renderRow(y, 0, DOTS, scene);
     if ((y & 7) == 7)
       vTaskDelay(pdMS_TO_TICKS(1));
   }
@@ -1899,8 +2022,8 @@ volatile bool consoleRedraw = false;
 
 void saveCalib()
 {
-  prefs.putUChar("ord0", rgbOrder[0] % 6);
-  prefs.putUChar("ord1", rgbOrder[1] % 6);
+  prefs.putUChar("ph0", phase[0]);
+  prefs.putUChar("ph1", phase[1]);
   prefs.putBool("mx", mirX);
   prefs.putBool("my", mirY);
 }
@@ -1915,11 +2038,13 @@ void printStatus()
   time_t now = time(nullptr);
   struct tm lt;
   localtime_r(&now, &lt);
-  Serial.printf("RGB A=%s(%u) B=%s(%u)  раскладка=%s  сдвиг=%d  mirror X=%d Y=%d  маска=%s  кадров/с=%.1f  heap=%u (блок %u)\n",
-                RGB_ORDER_NAME[rgbOrder[0] % 6], (unsigned)(rgbOrder[0] % 6),
-                RGB_ORDER_NAME[rgbOrder[1] % 6], (unsigned)(rgbOrder[1] % 6),
-                PAT_NAME[pixPat], act0, mirX, mirY, maskName[lineMask], fps,
+  Serial.printf("DCLK=%s МГц  инверсия=%d  пара=%d  пиксель=%s  mirror X=%d Y=%d  маска=%s  кадров/с=%.1f  heap=%u (блок %u)\n",
+                CLK_OPTS[clkSel].name, clkInv, pairSwap,
+                (const char*[]){ "RGB0", "0RGB", "B0RG", "GB0R" }[slotRot & 3], mirX, mirY, maskName[lineMask], fps,
                 (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+  Serial.printf("вывод: прерывание макс=%.1f мкс (строка 77 мкс), пропусков строк=%lu\n",
+                isrMaxCyc / 240.0f, (unsigned long)isrSkip);
+  isrMaxCyc = 0; isrSkip = 0;
   Serial.printf("Wi-Fi=%s  время=%s %02d:%02d:%02d  погода: %s  демо=%d  экран=%s\n",
                 WiFi.status() == WL_CONNECTED ? "OK" : "нет",
                 now > 1700000000 ? "OK" : "нет", lt.tm_hour, lt.tm_min, lt.tm_sec,
@@ -1930,10 +2055,11 @@ void printHelp()
 {
   Serial.println();
   Serial.println("=== AUO LCD: погода в Малаге ===");
-  Serial.println("1/2 - порядок RGB строк A/B (6 вариантов)   m - маска строк");
-  Serial.println("a - раскладка цветов в точке (8 вариантов)   [ ] - сдвиг на 1 отсчёт");
-  Serial.println("n - 8 полос с разными раскладками (на экране калибровки)");
-  Serial.println("b - 8 полос с разным сдвигом (на экране калибровки) — найти чистые R G B");
+  Serial.println("Режим матрицы UPS052 320RGB (R G B 0), дельту делает сама матрица");
+  Serial.println("m - маска строк");
+  Serial.println("f - частота DCLK (10 / 13.3 / 16 дробн. / 20 / 16 целый)   i - инверсия DCLK");
+  Serial.println("d - дизеринг: выкл / везде / только фон (по умолчанию)");
+  Serial.println("k - сдвиг пикселя на 1 такт (порядок 0RGB)   o - порядок отсчётов в паре");
   Serial.println("x/y - зеркало   c - экран калибровки   w - демо погоды");
   Serial.println("r - обновить погоду   p - статус   (BOOT = c)");
   printStatus();
@@ -1950,35 +2076,26 @@ void handleKey(char c)
 {
   switch (c)
   {
-    case '1': rgbOrder[0] = (rgbOrder[0] + 1) % 6; rebuildChan(); saveCalib(); consoleRedraw = true; printStatus(); break;
-    case '2': rgbOrder[1] = (rgbOrder[1] + 1) % 6; rebuildChan(); saveCalib(); consoleRedraw = true; printStatus(); break;
-    case 'x': case 'X': mirX = !mirX; saveCalib(); consoleRedraw = true; printStatus(); break;
+    case 'x': case 'X': mirX = !mirX; saveCalib(); buildBgTables(); consoleRedraw = true; printStatus(); break;
     case 'y': case 'Y': mirY = !mirY; saveCalib(); consoleRedraw = true; printStatus(); break;
     case 'm': case 'M': lineMask = (lineMask + 1) % 3; printStatus(); break;
-    case 'b': case 'B':
-      bandMode = !bandMode; patBand = false; refillAllLineBufs();
-      if (bandMode)
-      {
-        calibScreen = true; consoleRedraw = true;
-        Serial.printf("Полосы ВКЛ: сверху вниз 1..8, в полосе N сдвиг = %d + (N-1).\n", act0);
-        Serial.println("Найди полосу с чистыми R G B, нажми ']' (N-1) раз, потом 'b' — выключить полосы.");
-      }
-      else Serial.println("Полосы ВЫКЛ");
+    case 'o': case 'O': pairSwap = !pairSwap; prefs.putBool("sw", pairSwap); buildBgTables(); printStatus(); break;
+    case 'i': case 'I':
+      clkInv = !clkInv; prefs.putBool("ci", clkInv);
+      esp_rom_gpio_connect_out_signal(LCD_DCLK, I2S0O_WS_OUT_IDX, clkInv, false);
+      printStatus(); break;
+    case 'f': case 'F':
+      clkSel = (clkSel + 1) % NCLK; prefs.putUChar("cs", clkSel);
+      I2S0.sample_rate_conf.tx_bck_div_num = CLK_OPTS[clkSel].bck;
+      I2S0.clkm_conf.clkm_div_a = CLK_OPTS[clkSel].a;
+      I2S0.clkm_conf.clkm_div_b = CLK_OPTS[clkSel].b;
+      I2S0.clkm_conf.clkm_div_num = CLK_OPTS[clkSel].n;
+      printStatus(); break;
+    case 'd': case 'D':
+      ditherMode = (ditherMode + 1) % 3; prefs.putUChar("dm", ditherMode); consoleRedraw = true;
+      Serial.printf("дизеринг: %s\n", ditherMode == 0 ? "выкл" : ditherMode == 1 ? "везде" : "только фон");
       break;
-    case 'a': case 'A': pixPat = (pixPat + 1) % NPAT; prefs.putUChar("pp", pixPat); printStatus(); break;
-    case 'n': case 'N':
-      patBand = !patBand; bandMode = false; refillAllLineBufs();
-      if (patBand)
-      {
-        calibScreen = true; consoleRedraw = true;
-        Serial.println("Полосы раскладок ВКЛ, сверху вниз:");
-        for (int i = 0; i < NPAT; i++) Serial.printf("  %d = %s\n", i + 1, PAT_NAME[i]);
-        Serial.println("Найди полосу с чистыми R G B, выбери её клавишей 'a', потом 'n' — выключить.");
-      }
-      else Serial.println("Полосы раскладок ВЫКЛ");
-      break;
-    case '[': if (act0 > 230) { act0--; refillAllLineBufs(); prefs.putInt("a0", act0); } printStatus(); break;
-    case ']': if (act0 < 290) { act0++; refillAllLineBufs(); prefs.putInt("a0", act0); } printStatus(); break;
+    case 'k': case 'K': slotRot = (slotRot + 1) & 3; prefs.putUChar("sr", slotRot); buildBgTables(); printStatus(); break;
     case 'c': case 'C': calibScreen = !calibScreen; consoleRedraw = true; break;
     case 'w': case 'W': nextDemo(); break;
     case 'r': case 'R': wxForce = true; Serial.println("Обновляю погоду..."); break;
@@ -2062,6 +2179,30 @@ void controlTask(void*)
     {
       updateClockStaticOnly();
     }
+    // ---------- двоеточие мигает (период COLON_PERIOD_S), полоска секунд растёт ----------
+    if (!calibScreen && timeValid)
+    {
+      static time_t lastSec = 0;
+      struct timeval tv;
+      gettimeofday(&tv, nullptr);
+      if (tv.tv_sec != lastSec)
+      {
+        lastSec = tv.tv_sec;
+        // полоска секунд — каждую секунду
+        struct tm lt2;
+        localtime_r(&tv.tv_sec, &lt2);
+        subSec  = 0;
+        secFrac = lt2.tm_sec / 60.0f;
+        redrawRect(SEC_X0, SEC_Y0, SEC_X1, SEC_Y1);
+        // двоеточие — первую половину периода горит, вторую нет
+        bool on = (tv.tv_sec % COLON_PERIOD_S) < (COLON_PERIOD_S + 1) / 2;
+        if (on != colonOn)
+        {
+          colonOn = on;
+          redrawRect(COLON_RX0, COLON_RY0, COLON_RX1, COLON_RY1);
+        }
+      }
+    }
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
@@ -2082,25 +2223,26 @@ void setup()
   // Один framebuffer, как в рабочей V4.
   for (int y = 0; y < LINES; y++)
   {
-    fb[y] = (uint8_t*)malloc(DOTS / 2);
+    fb[y] = (uint16_t*)malloc((DOTS / 3) * 2);
     if (!fb[y])
     {
       while (true)
         delay(1000);
     }
-    memset(fb[y], 0, DOTS / 2);
+    memset(fb[y], 0, (DOTS / 3) * 2);
   }
   // Новый namespace, чтобы не тянуть настройки из сломанных V3/V5.
   prefs.begin("auov6", false);  // сохраняем калибровку V6
-  // Новые ключи только для порядка RGB; всё остальное остаётся в том же namespace.
-  rgbOrder[0] = prefs.getUChar("ord0", 0) % 6;
-  rgbOrder[1] = prefs.getUChar("ord1", 4) % 6;
+  phase[0] = prefs.getUChar("ph0", 0) % 3;
+  phase[1] = prefs.getUChar("ph1", 2) % 3;
   // По твоему наблюдению предыдущая калибровка была зеркальна:
   // B-G-R и белый->чёрный. Поэтому X по умолчанию включён.
   mirX = prefs.getBool("mx", false);
-  pixPat = prefs.getUChar("pp", 0) % NPAT;
-  act0 = prefs.getInt("a0", ACT0_S);
-  if (act0 < 230 || act0 > 290) act0 = ACT0_S;
+  pairSwap = prefs.getBool("sw", true);
+  clkInv   = prefs.getBool("ci", true);
+  clkSel   = prefs.getUChar("cs", 2) % NCLK;     // по умолчанию 16 МГц (лучший по тесту)
+  ditherMode = prefs.getUChar("dm", 2) % 3;
+  slotRot  = prefs.getUChar("sr", 1) & 3;
   mirY = prefs.getBool("my", false);
   rebuildChan();
   initMountains();
@@ -2114,6 +2256,7 @@ void setup()
   calibScreen = false;
   renderDashboardStatic();
   // Запуск аппаратного вывода (дальше такт идёт от железа)
+  buildLuts();
   startLcdOutput();
   LOG("вывод на матрицу запущен, heap %u, max блок %u", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
   printHelp();

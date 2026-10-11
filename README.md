@@ -23,6 +23,7 @@ Reverse engineering of an **AUO 59.02A42.005** LCD salvaged from an HP printer. 
 | Replacement MCU | ESP32 DevKit V1 / ESP-WROOM-32, without PSRAM |
 | Board supply | 3.3 V to the original power rail; existing analog voltage circuitry retained |
 | Backlight | development jumper from +3.3 V to `LED_ANODE` |
+| Enclosure | 3D-printed PLA stand holding the original TouchSmart panel, see [3D-printed stand](#3d-printed-stand) |
 
 ---
 
@@ -144,6 +145,9 @@ The ESP32 has 520 KB of SRAM, and Wi-Fi needs more than 100 KB of free heap to s
 | Day | between sunrise and sunset |
 | Golden hour | ±35 min around sunrise and sunset (times come from Open-Meteo) |
 | Night | otherwise; stars when the sky is clear |
+| Overcast | cloudy, fog, rain or storm: the palette fades towards grey |
+
+![The four sky modes on the real device: night, day, golden hour and overcast](docs/img/sky-modes.jpg)
 
 ---
 
@@ -202,6 +206,25 @@ Arduino IDE quirks worth knowing:
 ---
 
 A clean checkout contains **`secrets.example.h`**, not your actual `secrets.h`. Without a copied `secrets.h`, the code builds with placeholder credentials and cannot connect until you enter a network. Never commit personal SSIDs/passwords.
+
+## 3D-printed stand
+
+The original TouchSmart panel housing sits in a printed stand. The panel leans back against an angled cradle at the front, and the box behind it holds the electronics. The box has ventilation slots on the side and a removable back cover with a USB-C cut-out, fastened through the four corner holes.
+
+![Stand renders: front with the panel cradle, back, and back cover removed](docs/img/case-renders.png)
+
+<p>
+  <img src="docs/img/case-turntable.gif" width="49%" alt="The stand rotating">
+  <img src="docs/img/stand-back.jpg" width="49%" alt="The printed stand, rear view">
+</p>
+
+| Part | Size | File |
+|---|---|---|
+| Body (cradle + electronics box) | 104 × 64 × 69 mm | [`case/case-body.stl`](case/case-body.stl) |
+| Back cover | 104 × 22 × 5 mm | [`case/case-back-cover.stl`](case/case-back-cover.stl) |
+| Both parts with print settings | — | [`case/Clock_V1.3mf`](case/Clock_V1.3mf) (Bambu Studio project) |
+
+Printed on a Bambu Lab A1 mini: PLA, 0.4 mm nozzle, 0.2 mm layers, 2 walls, 15 % infill, supports on. The STL files are in assembled orientation in millimetres; rotate them for printing in your slicer as in the 3MF.
 
 ## The finished weather clock
 
